@@ -3,9 +3,7 @@
 # package and filters planning paths (e.g. openspec/) out of risk scoring.
 #
 # Usage:
-#   uses: Intrepids-AI/github-actions/code-review-graph-pr@v1
-# Temporary (until org transfer):
-#   uses: jazo-zonora/github-actions/code-review-graph-pr@main
+#   uses: Intrepids-AI/github-actions/code-review-graph-pr@main
 
 name: "code-review-graph PR Review (Intrepids)"
 description: >-
