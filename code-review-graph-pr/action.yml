@@ -1,0 +1,166 @@
+# Composite Action: CRG PR review with .code-review-graphignore on detect-changes.
+# Based on tirth8205/code-review-graph@v2.3.9 Action shape; installs the PyPI
+# package and filters planning paths (e.g. openspec/) out of risk scoring.
+#
+# Usage:
+#   uses: Intrepids-AI/github-actions/code-review-graph-pr@v1
+# Temporary (until org transfer):
+#   uses: jazo-zonora/github-actions/code-review-graph-pr@main
+
+name: "code-review-graph PR Review (Intrepids)"
+description: >-
+  Risk-scored PR review via code-review-graph, with .code-review-graphignore
+  applied to detect-changes (keeps OpenSpec in PRs without scoring it).
+author: "Intrepids"
+
+inputs:
+  github-token:
+    description: Token for sticky PR comment (needs pull-requests: write).
+    required: true
+  comment:
+    description: Post sticky PR comment.
+    required: false
+    default: "true"
+  fail-on-risk:
+    description: none | high | critical
+    required: false
+    default: "none"
+  python-version:
+    description: Python version for code-review-graph.
+    required: false
+    default: "3.12"
+  crg-version:
+    description: PyPI code-review-graph version to install.
+    required: false
+    default: "2.3.9"
+
+outputs:
+  comment-file:
+    description: Path to rendered markdown report.
+    value: ${{ steps.render.outputs.comment-file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install code-review-graph
+      shell: bash
+      run: python -m pip install --quiet "code-review-graph==${{ inputs.crg-version }}"
+
+    - name: Cache knowledge graph
+      uses: actions/cache@v4
+      with:
+        path: .code-review-graph
+        key: code-review-graph-schema13-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml', '**/package-lock.json', '**/uv.lock') }}
+        restore-keys: |
+          code-review-graph-schema13-${{ runner.os }}-
+
+    - name: Resolve diff base
+      shell: bash
+      env:
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        if [ -n "${BASE_REF}" ]; then
+          git fetch --no-tags --depth=1 origin \
+            "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          echo "CRG_BASE=origin/${BASE_REF}" >> "${GITHUB_ENV}"
+        else
+          echo "CRG_BASE=HEAD~1" >> "${GITHUB_ENV}"
+        fi
+
+    - name: Build or update the graph
+      shell: bash
+      run: |
+        if [ -f .code-review-graph/graph.db ]; then
+          code-review-graph update --base "${CRG_BASE}" || code-review-graph build
+        else
+          code-review-graph build
+        fi
+
+    - name: Run risk-scored change analysis (graphignore-filtered)
+      shell: bash
+      run: |
+        python "${GITHUB_ACTION_PATH}/scripts/detect_changes_filtered.py" \
+          --base "${CRG_BASE}" \
+          > "${RUNNER_TEMP}/crg-report.json"
+
+    - name: Render markdown report
+      id: render
+      shell: bash
+      run: |
+        set +e
+        python "${GITHUB_ACTION_PATH}/scripts/render_pr_comment.py" \
+          --input "${RUNNER_TEMP}/crg-report.json" \
+          --output "${RUNNER_TEMP}/crg-comment.md"
+        status=$?
+        set -e
+        if [ "${status}" -ne 0 ] && [ "${status}" -ne 4 ]; then
+          exit "${status}"
+        fi
+        # Append planning-path note when present in JSON.
+        if command -v jq >/dev/null 2>&1; then
+          note=$(jq -r '.planning_note // empty' "${RUNNER_TEMP}/crg-report.json")
+          if [ -n "${note}" ]; then
+            {
+              echo ""
+              echo "### Planning / ignored paths"
+              echo ""
+              echo "${note}"
+            } >> "${RUNNER_TEMP}/crg-comment.md"
+          fi
+        fi
+        echo "RENDER_STATUS=${status}" >> "${GITHUB_ENV}"
+        echo "comment-file=${RUNNER_TEMP}/crg-comment.md" >> "${GITHUB_OUTPUT}"
+
+    - name: Upsert sticky PR comment
+      if: ${{ inputs.comment == 'true' && github.event_name == 'pull_request' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        marker='<!-- code-review-graph-report -->'
+        author=$(gh api user --jq '.login' 2>/dev/null || true)
+        if [ -n "${author}" ]; then
+          author_filter=".user.login == \"${author}\""
+        else
+          author_filter='.user.type == "Bot"'
+        fi
+        comment_id=$(gh api \
+          "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+          --paginate \
+          --jq ".[] | select(${author_filter} and (.body | startswith(\"${marker}\"))) | .id" \
+          | head -n 1)
+        if [ -n "${comment_id}" ]; then
+          gh api --method PATCH --silent \
+            "repos/${GITHUB_REPOSITORY}/issues/comments/${comment_id}" \
+            -F body=@"${RUNNER_TEMP}/crg-comment.md"
+        else
+          gh api --method POST --silent \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            -F body=@"${RUNNER_TEMP}/crg-comment.md"
+        fi
+
+    - name: Fail when the analysis did not run
+      shell: bash
+      run: |
+        if [ "${RENDER_STATUS:-0}" -eq 4 ]; then
+          echo "::error::code-review-graph could not determine the changes;" \
+            "this pull request has NOT been analyzed."
+          exit 1
+        fi
+
+    - name: Enforce risk gate
+      if: ${{ inputs.fail-on-risk != 'none' }}
+      shell: bash
+      env:
+        FAIL_ON_RISK: ${{ inputs.fail-on-risk }}
+      run: |
+        python "${GITHUB_ACTION_PATH}/scripts/render_pr_comment.py" \
+          --input "${RUNNER_TEMP}/crg-report.json" \
+          --fail-on-risk "${FAIL_ON_RISK}" \
+          --quiet
