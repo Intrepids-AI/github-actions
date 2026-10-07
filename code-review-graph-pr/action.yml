@@ -13,7 +13,7 @@ author: "Intrepids"
 
 inputs:
   github-token:
-    description: Token for sticky PR comment (needs pull-requests: write).
+    description: "Token for sticky PR comment (needs pull-requests: write)."
     required: true
   comment:
     description: Post sticky PR comment.

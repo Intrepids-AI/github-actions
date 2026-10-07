@@ -18,7 +18,7 @@ author: "Intrepids"
 
 inputs:
   github-token:
-    description: Token with contents: write (usually secrets.GITHUB_TOKEN).
+    description: "Token with contents: write (usually secrets.GITHUB_TOKEN)."
     required: true
   tag:
     description: Tag name for the release. Defaults to github.ref_name.
