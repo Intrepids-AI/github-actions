@@ -1,0 +1,102 @@
+# Composite Action: idempotent GitHub Release on tag push.
+# Handles the common race where the GitHub UI creates the Release object
+# moments after the tag push starts this job.
+#
+# Usage (caller still owns checkout + job-level if / tag globs):
+#   - uses: actions/checkout@v4
+#     with:
+#       fetch-depth: 0
+#   - uses: Intrepids-AI/github-actions/create-github-release@main
+#     with:
+#       github-token: ${{ secrets.GITHUB_TOKEN }}
+
+name: "Create GitHub Release (Intrepids)"
+description: >-
+  Create a GitHub Release for the current tag with auto-generated notes.
+  Skips if the release already exists (e.g. drafted in the GitHub UI).
+author: "Intrepids"
+
+inputs:
+  github-token:
+    description: Token with contents: write (usually secrets.GITHUB_TOKEN).
+    required: true
+  tag:
+    description: Tag name for the release. Defaults to github.ref_name.
+    required: false
+    default: ""
+  title:
+    description: Release title. Defaults to the tag name.
+    required: false
+    default: ""
+  prerelease:
+    description: Mark the release as a pre-release (true/false).
+    required: false
+    default: "false"
+  generate-notes:
+    description: Pass --generate-notes to gh release create (true/false).
+    required: false
+    default: "true"
+  verify-tag:
+    description: Pass --verify-tag to gh release create (true/false).
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Create GitHub Release (skip if already exists)
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        TAG_INPUT: ${{ inputs.tag }}
+        REF_NAME: ${{ github.ref_name }}
+        TITLE_INPUT: ${{ inputs.title }}
+        PRERELEASE: ${{ inputs.prerelease }}
+        GENERATE_NOTES: ${{ inputs.generate-notes }}
+        VERIFY_TAG: ${{ inputs.verify-tag }}
+      run: |
+        set -euo pipefail
+
+        TAG="${TAG_INPUT:-$REF_NAME}"
+        if [ -z "${TAG}" ]; then
+          echo "No tag provided and github.ref_name is empty." >&2
+          exit 1
+        fi
+
+        title="${TITLE_INPUT:-$TAG}"
+        kind="release"
+        if [ "${PRERELEASE}" = "true" ]; then
+          kind="pre-release"
+        fi
+
+        # UI "Draft a new release" often creates the tag first, then the Release object.
+        # Tag push starts this job immediately — release may appear a moment later.
+        if gh release view "$TAG" >/dev/null 2>&1; then
+          echo "Release $TAG already exists (e.g. created in GitHub UI); leaving body unchanged."
+          exit 0
+        fi
+
+        create_args=( "$TAG" --title "$title" )
+        if [ "${GENERATE_NOTES}" = "true" ]; then
+          create_args+=( --generate-notes )
+        fi
+        if [ "${VERIFY_TAG}" = "true" ]; then
+          create_args+=( --verify-tag )
+        fi
+        if [ "${PRERELEASE}" = "true" ]; then
+          create_args+=( --prerelease )
+        fi
+
+        if gh release create "${create_args[@]}"; then
+          echo "Created ${kind} $TAG with auto-generated notes."
+          exit 0
+        fi
+
+        # Race: UI finished creating the release between view and create.
+        if gh release view "$TAG" >/dev/null 2>&1; then
+          echo "Release $TAG appeared concurrently; leaving body unchanged."
+          exit 0
+        fi
+
+        echo "Failed to create ${kind} $TAG and it still does not exist." >&2
+        exit 1
