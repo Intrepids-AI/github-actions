@@ -120,27 +120,34 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github-token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
+        COMMENT_FILE: ${{ runner.temp }}/crg-comment.md
       run: |
+        set -euo pipefail
         marker='<!-- code-review-graph-report -->'
-        author=$(gh api user --jq '.login' 2>/dev/null || true)
-        if [ -n "${author}" ]; then
-          author_filter=".user.login == \"${author}\""
-        else
-          author_filter='.user.type == "Bot"'
+        if [ ! -f "${COMMENT_FILE}" ]; then
+          echo "::error::Missing comment file at ${COMMENT_FILE}"
+          exit 1
         fi
-        comment_id=$(gh api \
-          "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
-          --paginate \
-          --jq ".[] | select(${author_filter} and (.body | startswith(\"${marker}\"))) | .id" \
-          | head -n 1)
-        if [ -n "${comment_id}" ]; then
-          gh api --method PATCH --silent \
-            "repos/${GITHUB_REPOSITORY}/issues/comments/${comment_id}" \
-            -F body=@"${RUNNER_TEMP}/crg-comment.md"
-        else
-          gh api --method POST --silent \
+        # GITHUB_TOKEN / installation tokens cannot call GET /user (403). Always
+        # match Bot-authored sticky comments (same as prior in-repo upsert).
+        # Avoid `gh | head` under pipefail: head closing the pipe yields SIGPIPE (141).
+        comment_id=$(
+          gh api \
             "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
-            -F body=@"${RUNNER_TEMP}/crg-comment.md"
+            --paginate \
+            --jq ".[] | select(.user.type == \"Bot\" and (.body | startswith(\"${marker}\"))) | .id" \
+            | awk 'NR==1 { print; exit 0 }'
+        ) || true
+        if [ -n "${comment_id}" ]; then
+          echo "Updating sticky comment ${comment_id}"
+          gh api --method PATCH \
+            "repos/${GITHUB_REPOSITORY}/issues/comments/${comment_id}" \
+            -F body=@"${COMMENT_FILE}" >/dev/null
+        else
+          echo "Creating sticky PR comment"
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            -F body=@"${COMMENT_FILE}" >/dev/null
         fi
 
     - name: Fail when the analysis did not run
