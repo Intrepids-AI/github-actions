@@ -16,25 +16,25 @@ inputs:
     description: "Token for sticky PR comment (needs pull-requests: write)."
     required: true
   comment:
-    description: Post sticky PR comment.
+    description: "Post sticky PR comment."
     required: false
     default: "true"
   fail-on-risk:
-    description: none | high | critical
+    description: "none | high | critical"
     required: false
     default: "none"
   python-version:
-    description: Python version for code-review-graph.
+    description: "Python version for code-review-graph."
     required: false
     default: "3.12"
   crg-version:
-    description: PyPI code-review-graph version to install.
+    description: "PyPI code-review-graph version to install."
     required: false
     default: "2.3.9"
 
 outputs:
   comment-file:
-    description: Path to rendered markdown report.
+    description: "Path to rendered markdown report."
     value: ${{ steps.render.outputs.comment-file }}
 
 runs:
