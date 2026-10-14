@@ -85,7 +85,7 @@ runs:
           --soft-fail \
           ${{ inputs.additional_args }} \
           -f json \
-          -o "${RUNNER_TEMP}/tfsec-critical.json"
+          --out "${RUNNER_TEMP}/tfsec-critical.json"
         # Human-readable summary in logs
         # shellcheck disable=SC2086
         "${RUNNER_TEMP}/tfsec" "$WD" \
