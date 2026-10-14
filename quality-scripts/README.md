@@ -1,40 +1,41 @@
 # Shared quality-scripts
 
-Canonical bash gates for Intrepids repos (complexity allowlists, knip, jscpd).
-Consumer repos keep **baselines / allowlists / configs** under their own `scripts/`
-and a small `scripts/quality-env.sh` that sets paths + package manager.
+Canonical bash gates for Intrepids repos. Consumer repos keep **baselines /
+allowlists / configs** under their own `scripts/` and a small
+`scripts/quality-env.sh`.
 
-## Resolution order
+## CI
 
-Wrappers look for this directory as:
+Use the composites (no manual clone):
 
-1. `$QUALITY_SCRIPTS_ROOT` (set by CI composite `node-quality-gates`)
+- Node: `Intrepids-AI/github-actions/node-quality-gates@main`
+- Python: `Intrepids-AI/github-actions/python-quality-gates@main`
+
+Both export `QUALITY_SCRIPTS_ROOT` from this directory via `github.action_path`.
+
+## Local resolution order
+
+1. `$QUALITY_SCRIPTS_ROOT` (set by CI Action)
 2. `$QUALITY_REPO_ROOT/../github-actions/quality-scripts` (sibling clone)
-3. `$QUALITY_REPO_ROOT/vendor/github-actions/quality-scripts` (submodule / vendor)
+3. `$QUALITY_REPO_ROOT/vendor/github-actions/quality-scripts` (vendor)
+4. Auto-cache clone under `$XDG_CACHE_HOME/intrepids-quality-scripts/` (see Python example)
 
-## Env contract (`scripts/quality-env.sh` in the consumer)
+## Python gates (`run-python-quality-gates.sh`)
 
-| Variable | Purpose |
-|----------|---------|
-| `QUALITY_REPO_ROOT` | Consumer repo root |
-| `PACKAGE_EXEC` | `pnpm exec` or `npx` |
-| `JSCPD_PATHS` | Space-separated paths to scan |
-| `QUALITY_SCAN_PATHS` | Paths for allowlist `rg` scans |
-| `QUALITY_GLOBS` | Space-separated globs (default `*.ts *.tsx`) |
-| `QUALITY_CHECK_COMMAND` | e.g. `pnpm check` |
-| `QUALITY_FORMAT_COMMAND` | e.g. `pnpm format:check` (optional) |
-| `QUALITY_SKIP_ENSURE_NODE` | `1` for Python-only allowlist use |
-| `KNIP_FINGERPRINT_PREFIX` | Optional prefix for mixed baselines |
+| Script | Tool |
+|--------|------|
+| `check-ruff.sh` | Ruff |
+| `check-complexity-disable.sh` | `# noqa: C901` allowlist |
+| `check-xenon.sh` | Xenon / Radon |
+| `check-complexipy.sh` | complexipy snapshot |
+| `check-knip-vulture.sh` | knip + vulture |
+| `check-jscpd.sh` | jscpd ceilings |
+| `check-pytest.sh` | pytest (separate CI job) |
 
-## Consumer wrapper pattern
+See `quality-env.example.python.sh`.
 
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-# shellcheck source=quality-env.sh
-source "$ROOT/scripts/quality-env.sh"
-exec bash "$QUALITY_SCRIPTS_ROOT/check-jscpd.sh"
-```
+## Node gates
 
-Do **not** copy the gate implementations into each repo — change them here.
+See `quality-env.example.sh` + `run-node-quality-gates.sh`.
+
+Do **not** copy gate implementations into each repo — change them here.

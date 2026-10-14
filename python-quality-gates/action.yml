@@ -1,0 +1,56 @@
+# Composite: run standardized Python quality gates against the consumer repo.
+# Caller owns checkout + `uv sync` (+ `npm ci` when knip/jscpd are used).
+# Usage:
+#   - uses: Intrepids-AI/github-actions/python-quality-gates@main
+
+name: "Python quality gates"
+description: >-
+  Export QUALITY_SCRIPTS_ROOT and run the shared Python mechanical gates
+  (ruff, C901 allowlist, xenon, complexipy, knip+vulture, jscpd). Consumer
+  keeps scripts/quality-env.sh + baselines only.
+author: "Intrepids"
+
+inputs:
+  install-ripgrep:
+    description: "Install ripgrep before running (true/false)."
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Install ripgrep
+      if: inputs.install-ripgrep == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if command -v rg >/dev/null 2>&1; then
+          echo "ripgrep already installed: $(rg --version | head -1)"
+          exit 0
+        fi
+        sudo apt-get update -qq
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ripgrep
+        rg --version | head -1
+
+    - name: Export shared quality-scripts root
+      shell: bash
+      run: |
+        set -euo pipefail
+        ROOT="$(cd "${{ github.action_path }}/../quality-scripts" && pwd)"
+        echo "QUALITY_SCRIPTS_ROOT=${ROOT}" >> "${GITHUB_ENV}"
+        echo "Shared quality-scripts: ${ROOT}"
+
+    - name: Mechanical gates
+      shell: bash
+      run: |
+        set -euo pipefail
+        export QUALITY_REPO_ROOT="${GITHUB_WORKSPACE}"
+        if [[ ! -f "${QUALITY_REPO_ROOT}/scripts/quality-env.sh" ]]; then
+          echo "python-quality-gates: missing scripts/quality-env.sh" >&2
+          exit 1
+        fi
+        # shellcheck source=/dev/null
+        source "${QUALITY_REPO_ROOT}/scripts/quality-env.sh"
+        # Action path wins over any local resolve.
+        export QUALITY_SCRIPTS_ROOT
+        bash "${QUALITY_SCRIPTS_ROOT}/run-python-quality-gates.sh"

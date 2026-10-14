@@ -12,6 +12,7 @@ not a fork of third-party products—only Action wrappers and shared scripts liv
 | [`install-ripgrep`](./install-ripgrep) | Install `rg` on the runner (shared by quality gates) |
 | [`setup-quality-scripts`](./setup-quality-scripts) | Export `QUALITY_SCRIPTS_ROOT` (+ optional ripgrep) for Python / custom gate runners |
 | [`node-quality-gates`](./node-quality-gates) | Export shared `quality-scripts` + run consumer `check` / optional format |
+| [`python-quality-gates`](./python-quality-gates) | Export shared `quality-scripts` + run Python mechanical gates (ruff/xenon/complexipy/knip/jscpd) |
 
 ## Shared quality scripts
 
@@ -30,6 +31,15 @@ Caller owns checkout, Node setup, and `npm ci` / `pnpm install` (+ Prisma genera
   with:
     check-command: npm run check
     format-command: npm run format:check
+```
+
+
+#### python-quality-gates
+
+Caller owns checkout, `uv sync --group dev`, and `npm ci` (for knip/jscpd).
+
+```yaml
+- uses: Intrepids-AI/github-actions/python-quality-gates@main
 ```
 
 #### install-ripgrep
