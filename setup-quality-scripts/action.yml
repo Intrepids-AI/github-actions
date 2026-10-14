@@ -1,0 +1,41 @@
+# Composite: make shared quality-scripts available to the consumer workflow.
+# Prefer this when the job cannot use node-quality-gates (e.g. Python repos).
+# Usage:
+#   - uses: Intrepids-AI/github-actions/setup-quality-scripts@main
+#   - run: bash scripts/run-quality-gates.sh
+
+name: "Setup quality-scripts"
+description: >-
+  Install ripgrep (optional) and expose QUALITY_SCRIPTS_ROOT from this
+  Action's sibling quality-scripts/ directory (no second checkout needed).
+author: "Intrepids"
+
+inputs:
+  install-ripgrep:
+    description: "Install ripgrep before continuing (true/false)."
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Install ripgrep
+      if: inputs.install-ripgrep == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if command -v rg >/dev/null 2>&1; then
+          echo "ripgrep already installed: $(rg --version | head -1)"
+          exit 0
+        fi
+        sudo apt-get update -qq
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ripgrep
+        rg --version | head -1
+
+    - name: Export QUALITY_SCRIPTS_ROOT
+      shell: bash
+      run: |
+        set -euo pipefail
+        ROOT="$(cd "${{ github.action_path }}/../quality-scripts" && pwd)"
+        echo "QUALITY_SCRIPTS_ROOT=${ROOT}" >> "${GITHUB_ENV}"
+        echo "Shared quality-scripts: ${ROOT}"

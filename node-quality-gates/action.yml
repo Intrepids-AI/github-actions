@@ -1,0 +1,78 @@
+# Composite: run standardized Node quality gates against the consumer repo.
+# Caller owns checkout + dependency install (+ prisma generate if needed).
+# Usage:
+#   - uses: Intrepids-AI/github-actions/node-quality-gates@main
+#     with:
+#       check-command: npm run check
+#       format-command: npm run format:check
+
+name: "Node quality gates"
+description: >-
+  Point QUALITY_SCRIPTS_ROOT at the shared quality-scripts, then run the
+  consumer check (and optional format) command. Scripts resolve baselines
+  from the consumer repo scripts/ directory.
+author: "Intrepids"
+
+inputs:
+  check-command:
+    description: "Shell command for mechanical gates (e.g. npm run check / pnpm check)."
+    required: true
+  format-command:
+    description: "Optional format check command (e.g. npm run format:check). Empty skips."
+    required: false
+    default: ""
+  install-ripgrep:
+    description: "Install ripgrep before running (true/false)."
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Install ripgrep
+      if: inputs.install-ripgrep == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if command -v rg >/dev/null 2>&1; then
+          echo "ripgrep already installed: $(rg --version | head -1)"
+          exit 0
+        fi
+        sudo apt-get update -qq
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ripgrep
+        rg --version | head -1
+
+    - name: Export shared quality-scripts root
+      shell: bash
+      run: |
+        set -euo pipefail
+        ROOT="$(cd "${{ github.action_path }}/../quality-scripts" && pwd)"
+        echo "QUALITY_SCRIPTS_ROOT=${ROOT}" >> "${GITHUB_ENV}"
+        echo "Shared quality-scripts: ${ROOT}"
+
+    - name: Mechanical gates
+      shell: bash
+      run: |
+        set -euo pipefail
+        export QUALITY_REPO_ROOT="${GITHUB_WORKSPACE}"
+        if [[ -f "${QUALITY_REPO_ROOT}/scripts/quality-env.sh" ]]; then
+          # shellcheck source=/dev/null
+          source "${QUALITY_REPO_ROOT}/scripts/quality-env.sh"
+        fi
+        export QUALITY_SCRIPTS_ROOT
+        echo "==> ${{ inputs.check-command }}"
+        eval "${{ inputs.check-command }}"
+
+    - name: Format check
+      if: inputs.format-command != ''
+      shell: bash
+      run: |
+        set -euo pipefail
+        export QUALITY_REPO_ROOT="${GITHUB_WORKSPACE}"
+        if [[ -f "${QUALITY_REPO_ROOT}/scripts/quality-env.sh" ]]; then
+          # shellcheck source=/dev/null
+          source "${QUALITY_REPO_ROOT}/scripts/quality-env.sh"
+        fi
+        export QUALITY_SCRIPTS_ROOT
+        echo "==> ${{ inputs.format-command }}"
+        eval "${{ inputs.format-command }}"

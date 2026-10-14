@@ -1,0 +1,23 @@
+# Composite: install ripgrep on ubuntu-latest runners.
+# Usage:
+#   - uses: Intrepids-AI/github-actions/install-ripgrep@main
+
+name: "Install ripgrep"
+description: >-
+  Install ripgrep (rg) via apt on the runner. No-op if rg is already on PATH.
+author: "Intrepids"
+
+runs:
+  using: composite
+  steps:
+    - name: Install ripgrep
+      shell: bash
+      run: |
+        set -euo pipefail
+        if command -v rg >/dev/null 2>&1; then
+          echo "ripgrep already installed: $(rg --version | head -1)"
+          exit 0
+        fi
+        sudo apt-get update -qq
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ripgrep
+        rg --version | head -1
