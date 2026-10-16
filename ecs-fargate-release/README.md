@@ -1,6 +1,6 @@
 # ECS Fargate release (reusable workflow)
 
-Callable workflow: **GitHub Release** → **ECR** (version + sha + `prod`) → **ECS** via OIDC (`tf-deployer`). No in-repo Terraform apply.
+Callable workflow: **GitHub Release** → **ECR** (version + sha) → **ECS** via OIDC (`tf-deployer`). No in-repo Terraform apply.
 
 ## Caller trigger (app repo)
 
@@ -22,7 +22,7 @@ permissions:
 jobs:
   prod:
     # Optional: environment: production  # approval gates / env-scoped config
-    uses: Intrepids-AI/github-actions/.github/workflows/ecs-fargate-release.yml@main
+    uses: Intrepids-AI/github-actions/.github/workflows/ecs-fargate-release.yml@ecs-fargate-release/v1.0.0
     with:
       aws-account-id: "446070271612"
       ecr-repository-name: intrepidsai/admin-api-nestjs
@@ -34,7 +34,7 @@ jobs:
       # codebuild-runner-label defaults to codebuild-common-infra-prod (CodeBuild GHA runner)
 ```
 
-Pin `@main` to a commit SHA or release tag in production callers after you validate a deploy.
+Pin the workflow and actions per [VERSIONING.md](../VERSIONING.md) (e.g. `@ecs-fargate-release/v1.0.0`).
 
 ## AWS auth (replace static keys)
 

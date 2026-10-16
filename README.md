@@ -79,7 +79,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-Pin to a tag (e.g. `@v1`) or commit SHA once you cut a release.
+Per-action tags: see [VERSIONING.md](./VERSIONING.md) (e.g. `@create-github-release/v1.0.0`).
 
 ## Adding an action
 
