@@ -42,8 +42,8 @@ for name in "${TARGETS[@]}"; do
     echo "exists $tag @ $(git rev-parse --short "$tag")"
     continue
   fi
-  echo "tag $tag @ HEAD"
-  git tag -a "$tag" -m "${name} v${ver}"
+  echo "tag $tag @ HEAD (lightweight; annotated tags break reusable-workflow @ref resolution)"
+  git tag "$tag"
   if [[ "$PUSH" == true ]]; then
     git push origin "$tag"
   fi

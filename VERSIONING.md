@@ -16,6 +16,12 @@ Examples:
 
 The canonical version for each unit lives in that directory’s **`VERSION`** file (e.g. `ecs-fargate-deploy/VERSION` → `1.0.0`).
 
+## Tag shape (important)
+
+Use **lightweight** tags only (`git tag <name>`). **Annotated** tags (`git tag -a`) can make reusable workflow callers fail at startup with *workflow file issue* / *workflow was not found* when using `uses: …/ecs-fargate-release.yml@<name>/vX.Y.Z`. Composite actions are less picky; the release script always creates lightweight tags.
+
+If you must pin a reusable workflow without a tag, use the **commit SHA** the tag points to (not the annotated tag object SHA).
+
 ## Cutting a release
 
 After merging changes to `main`:
