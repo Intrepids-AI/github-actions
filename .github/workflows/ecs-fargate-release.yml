@@ -1,0 +1,171 @@
+# Reusable prod release: GitHub Release + ECR build (version tag, sha, prod) + ECS rollout.
+# Caller owns the trigger (recommended: push tags v*.*.* only).
+#
+#   jobs:
+#     prod:
+#       uses: Intrepids-AI/github-actions/.github/workflows/ecs-fargate-release.yml@main
+#       with: { ... }
+#
+# Auth: GitHub OIDC → tf-deployer (no static AWS access keys).
+# Infra/env/secrets: company terraform repo only (not this workflow).
+
+name: ECS Fargate release
+
+on:
+  workflow_call:
+    inputs:
+      aws-region:
+        type: string
+        default: us-east-2
+      aws-account-id:
+        type: string
+        required: true
+      deployer-role-name:
+        type: string
+        default: tf-deployer
+      codebuild-runner-label:
+        type: string
+        default: common-infra-prod
+        description: Prefix for runs-on (suffix -github-actions-runner-${{ github.run_id }}-${{ github.run_attempt }})
+      ecr-repository-name:
+        type: string
+        required: true
+        description: ECR repository name without registry (e.g. intrepidsai/admin-api-nestjs)
+      dockerfile:
+        type: string
+        default: Dockerfile
+      docker-context:
+        type: string
+        default: .
+      docker-build-args:
+        type: string
+        default: ""
+        description: Optional multiline build-args for docker/build-push-action
+      ecs-cluster:
+        type: string
+        required: true
+      ecs-service:
+        type: string
+        required: true
+      task-definition-family:
+        type: string
+        required: true
+      container-name:
+        type: string
+        required: true
+      rollout-strategy:
+        type: string
+        default: register
+        description: register (recommended for version-tagged task defs) or force
+      create-github-release:
+        type: boolean
+        default: true
+      wait-for-service-stability:
+        type: boolean
+        default: true
+      registry-cache-tag:
+        type: string
+        default: buildcache
+        description: ECR tag for buildx registry cache
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  create-github-release:
+    if: inputs.create-github-release && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./create-github-release
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  build-and-deploy:
+    name: Build, push, deploy ECS
+    needs: [create-github-release]
+    if: always() && (needs.create-github-release.result == 'success' || needs.create-github-release.result == 'skipped')
+    runs-on: ${{ inputs.codebuild-runner-label }}-github-actions-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout application repo
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-region: ${{ inputs.aws-region }}
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/${{ inputs.deployer-role-name }}
+          role-session-name: ecs-release-${{ github.run_id }}
+
+      - name: Prefer OIDC session over CodeBuild role
+        shell: bash
+        env:
+          DEPLOYER_ROLE_NAME: ${{ inputs.deployer-role-name }}
+        run: |
+          set -euo pipefail
+          unset AWS_CONTAINER_CREDENTIALS_RELATIVE_URI AWS_CONTAINER_CREDENTIALS_FULL_URI || true
+          {
+            echo "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI="
+            echo "AWS_CONTAINER_CREDENTIALS_FULL_URI="
+          } >> "$GITHUB_ENV"
+          ARN="$(aws sts get-caller-identity --query Arn --output text)"
+          echo "Caller: ${ARN}"
+          if [[ "${ARN}" != *"${DEPLOYER_ROLE_NAME}"* ]]; then
+            echo "::error::Expected ${DEPLOYER_ROLE_NAME} session; got ${ARN}"
+            exit 1
+          fi
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve image tags
+        id: tags
+        run: |
+          set -euo pipefail
+          SHA_SHORT="$(echo "${GITHUB_SHA}" | cut -c1-12)"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION_TAG="${GITHUB_REF_NAME}"
+          else
+            echo "::error::This workflow expects a version tag ref (v*.*.*)."
+            exit 1
+          fi
+          echo "version_tag=${VERSION_TAG}" >> "$GITHUB_OUTPUT"
+          echo "sha_short=${SHA_SHORT}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.docker-context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: linux/amd64
+          provenance: false
+          push: true
+          build-args: ${{ inputs.docker-build-args }}
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr-repository-name }}:${{ steps.tags.outputs.version_tag }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr-repository-name }}:${{ steps.tags.outputs.sha_short }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr-repository-name }}:prod
+          cache-from: type=registry,ref=${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr-repository-name }}:${{ inputs.registry-cache-tag }}
+          cache-to: type=registry,ref=${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr-repository-name }}:${{ inputs.registry-cache-tag }},mode=max
+
+      - name: Deploy to ECS
+        uses: ./ecs-fargate-deploy
+        with:
+          aws-region: ${{ inputs.aws-region }}
+          ecs-cluster: ${{ inputs.ecs-cluster }}
+          ecs-service: ${{ inputs.ecs-service }}
+          task-definition-family: ${{ inputs.task-definition-family }}
+          container-name: ${{ inputs.container-name }}
+          image-uri: ${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr-repository-name }}:${{ steps.tags.outputs.version_tag }}
+          rollout-strategy: ${{ inputs.rollout-strategy }}
+          wait-for-service-stability: ${{ inputs.wait-for-service-stability }}
+          deployer-role-name: ${{ inputs.deployer-role-name }}

@@ -1,0 +1,72 @@
+name: ECS Fargate deploy (image rollout)
+description: >-
+  Register an ECS task definition revision with a new container image (preserving
+  env/secrets from the current family) and update the service, or force-new-deployment.
+author: Intrepids
+
+inputs:
+  aws-region:
+    description: AWS region
+    required: false
+    default: us-east-2
+  ecs-cluster:
+    description: ECS cluster name
+    required: true
+  ecs-service:
+    description: ECS service name
+    required: true
+  task-definition-family:
+    description: ECS task definition family (latest revision used as template)
+    required: true
+  container-name:
+    description: Container name inside the task definition
+    required: true
+  image-uri:
+    description: Full ECR image URI for the rollout (e.g. 123.dkr.ecr.us-east-2.amazonaws.com/repo:v1.2.3)
+    required: true
+  rollout-strategy:
+    description: register (image-only new revision) or force (force-new-deployment only)
+    required: false
+    default: register
+  wait-for-service-stability:
+    description: Wait for ECS services-stable after update (true/false)
+    required: false
+    default: "true"
+  deployer-role-name:
+    description: Expected IAM role name substring for caller identity check (CodeBuild runners)
+    required: false
+    default: tf-deployer
+
+runs:
+  using: composite
+  steps:
+    - name: Prefer OIDC session over CodeBuild role
+      shell: bash
+      env:
+        DEPLOYER_ROLE_NAME: ${{ inputs.deployer-role-name }}
+      run: |
+        set -euo pipefail
+        unset AWS_CONTAINER_CREDENTIALS_RELATIVE_URI AWS_CONTAINER_CREDENTIALS_FULL_URI || true
+        ARN="$(aws sts get-caller-identity --query Arn --output text)"
+        echo "Caller: ${ARN}"
+        if [[ "${ARN}" != *"${DEPLOYER_ROLE_NAME}"* ]]; then
+          echo "::error::Expected ${DEPLOYER_ROLE_NAME} session; got ${ARN}"
+          exit 1
+        fi
+
+    - name: Roll out ECS service
+      shell: bash
+      env:
+        AWS_REGION: ${{ inputs.aws-region }}
+        ECS_CLUSTER: ${{ inputs.ecs-cluster }}
+        ECS_SERVICE: ${{ inputs.ecs-service }}
+        TASK_DEFINITION_FAMILY: ${{ inputs.task-definition-family }}
+        CONTAINER_NAME: ${{ inputs.container-name }}
+        IMAGE_URI: ${{ inputs.image-uri }}
+        ROLLOUT: ${{ inputs.rollout-strategy }}
+        WAIT_STABLE: ${{ inputs.wait-for-service-stability }}
+      run: |
+        set -euo pipefail
+        SCRIPT="${{ github.action_path }}/ecs-deploy-release.sh"
+        chmod +x "$SCRIPT"
+        "$SCRIPT"
