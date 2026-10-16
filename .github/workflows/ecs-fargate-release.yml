@@ -67,10 +67,6 @@ on:
         type: string
         default: buildcache
         description: ECR tag for buildx registry cache
-      github-environment:
-        type: string
-        default: production
-        description: GitHub Environment for the deploy job (must be set on a job inside this workflow, not on the caller).
 
 permissions:
   id-token: write
@@ -94,7 +90,7 @@ jobs:
     name: Build, push, deploy ECS
     needs: [create-github-release]
     if: always() && (needs.create-github-release.result == 'success' || needs.create-github-release.result == 'skipped')
-    environment: ${{ inputs.github-environment }}
+    # No GitHub Environment on this job: OIDC sub stays ref:refs/tags/… so tf-deployer trust can use refs/tags/* per repo.
     runs-on: ${{ inputs.codebuild-runner-label }}-github-actions-runner-${{ github.run_id }}-${{ github.run_attempt }}
     permissions:
       id-token: write

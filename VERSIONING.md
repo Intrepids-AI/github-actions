@@ -22,6 +22,8 @@ Use **lightweight** tags only (`git tag <name>`). **Annotated** tags (`git tag -
 
 **Never put `${{ … }}` in `workflow_call` input `description` fields** (GitHub evaluates expressions there at workflow load time; the reusable workflow fails to load and callers show *workflow file issue*). Composite `action.yml` descriptions have the same rule.
 
+**OIDC / `tf-deployer`:** `ecs-fargate-release` does **not** set a GitHub `environment` on the deploy job so tag-triggered runs keep OIDC `sub` as `repo:…:ref:refs/tags/vX.Y.Z` and deployer trust can use `refs/tags/*` only. If you add `environment:` on the deploy job, IAM must allow `environment:<name>` per repo.
+
 If you must pin a reusable workflow without a tag, use the **commit SHA** the tag points to (not the annotated tag object SHA).
 
 ## Cutting a release
