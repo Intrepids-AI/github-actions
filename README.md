@@ -9,6 +9,8 @@ not a fork of third-party products—only Action wrappers and shared scripts liv
 |------|---------|
 | [`code-review-graph-pr`](./code-review-graph-pr) | Sticky PR risk comment via [code-review-graph](https://github.com/tirth8205/code-review-graph) PyPI, applying `.code-review-graphignore` to `detect-changes` so OpenSpec/planning trees stay in the PR without inflating scores |
 | [`create-github-release`](./create-github-release) | Idempotent GitHub Release on tag push (`gh release create --generate-notes`), race-safe if the UI created the release first |
+| [`ecs-fargate-deploy`](./ecs-fargate-deploy) | ECS rollout composite (`register` image-only revision or `force`); used by the reusable release workflow |
+| [`.github/workflows/ecs-fargate-release.yml`](./.github/workflows/ecs-fargate-release.yml) | Reusable **v*.*.*** prod pipeline: release + ECR (version/sha/prod) + ECS via **tf-deployer** OIDC ([docs](./ecs-fargate-release/README.md)) |
 | [`install-ripgrep`](./install-ripgrep) | Install `rg` on the runner (shared by quality gates) |
 | [`setup-quality-scripts`](./setup-quality-scripts) | Export `QUALITY_SCRIPTS_ROOT` (+ optional ripgrep) for Python / custom gate runners |
 | [`node-quality-gates`](./node-quality-gates) | Export shared `quality-scripts` + run consumer `check` / optional format |
