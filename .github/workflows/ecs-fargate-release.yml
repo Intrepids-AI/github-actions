@@ -26,7 +26,7 @@ on:
       codebuild-runner-label:
         type: string
         default: codebuild-common-infra-prod
-        description: Prefix for runs-on (suffix -github-actions-runner-${{ github.run_id }}-${{ github.run_attempt }})
+        description: Prefix for runs-on; job appends -github-actions-runner-<run_id>-<run_attempt> (see runs-on in build-and-deploy).
       ecr-repository-name:
         type: string
         required: true
