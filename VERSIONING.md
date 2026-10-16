@@ -20,6 +20,8 @@ The canonical version for each unit lives in that directory’s **`VERSION`** fi
 
 Use **lightweight** tags only (`git tag <name>`). **Annotated** tags (`git tag -a`) can make reusable workflow callers fail at startup with *workflow file issue* / *workflow was not found* when using `uses: …/ecs-fargate-release.yml@<name>/vX.Y.Z`. Composite actions are less picky; the release script always creates lightweight tags.
 
+**Never put `${{ … }}` in `workflow_call` input `description` fields** (GitHub evaluates expressions there at workflow load time; the reusable workflow fails to load and callers show *workflow file issue*). Composite `action.yml` descriptions have the same rule.
+
 If you must pin a reusable workflow without a tag, use the **commit SHA** the tag points to (not the annotated tag object SHA).
 
 ## Cutting a release
