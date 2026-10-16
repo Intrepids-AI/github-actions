@@ -14,12 +14,14 @@ on:
     tags:
       - "v*.*.*"
 
+# Required on the caller job (reusable workflow permissions do not inherit).
 permissions:
   id-token: write
   contents: read
 
 jobs:
   prod:
+    # Optional: environment: production  # approval gates / env-scoped config
     uses: Intrepids-AI/github-actions/.github/workflows/ecs-fargate-release.yml@main
     with:
       aws-account-id: "446070271612"
@@ -29,7 +31,10 @@ jobs:
       task-definition-family: zonora-prod-admin-task-definition
       container-name: zonora-prod-admin-container
       rollout-strategy: register
+      # codebuild-runner-label defaults to codebuild-common-infra-prod (CodeBuild GHA runner)
 ```
+
+Pin `@main` to a commit SHA or release tag in production callers after you validate a deploy.
 
 ## AWS auth (replace static keys)
 

@@ -23,6 +23,11 @@ WAIT_STABLE="${WAIT_STABLE:-true}"
 register_task_def_with_image() {
   local task_def input
   task_def="$(aws ecs describe-task-definition --task-definition "$FAMILY" --region "$AWS_REGION" --query taskDefinition)"
+  if ! echo "$task_def" | jq -e --arg CONTAINER "$CONTAINER" \
+    '.containerDefinitions[] | select(.name == $CONTAINER)' >/dev/null; then
+    echo "Container ${CONTAINER} not found in task definition family ${FAMILY}" >&2
+    exit 1
+  fi
   input="$(echo "$task_def" | jq \
     --arg IMAGE "$IMAGE_URI" \
     --arg CONTAINER "$CONTAINER" \

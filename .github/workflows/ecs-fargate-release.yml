@@ -25,7 +25,7 @@ on:
         default: tf-deployer
       codebuild-runner-label:
         type: string
-        default: common-infra-prod
+        default: codebuild-common-infra-prod
         description: Prefix for runs-on (suffix -github-actions-runner-${{ github.run_id }}-${{ github.run_attempt }})
       ecr-repository-name:
         type: string
@@ -82,7 +82,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: ./create-github-release
+      - uses: Intrepids-AI/github-actions/create-github-release@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -91,6 +91,9 @@ jobs:
     needs: [create-github-release]
     if: always() && (needs.create-github-release.result == 'success' || needs.create-github-release.result == 'skipped')
     runs-on: ${{ inputs.codebuild-runner-label }}-github-actions-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Checkout application repo
         uses: actions/checkout@v4
@@ -158,7 +161,7 @@ jobs:
           cache-to: type=registry,ref=${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr-repository-name }}:${{ inputs.registry-cache-tag }},mode=max
 
       - name: Deploy to ECS
-        uses: ./ecs-fargate-deploy
+        uses: Intrepids-AI/github-actions/ecs-fargate-deploy@main
         with:
           aws-region: ${{ inputs.aws-region }}
           ecs-cluster: ${{ inputs.ecs-cluster }}
